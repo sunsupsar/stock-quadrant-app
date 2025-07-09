@@ -56,10 +56,10 @@ def get_screener_data(stock_code):
 # Streamlit app
 # ---------------------------
 st.set_page_config(page_title="Stock Quadrant Analyzer", layout="wide")
-st.title("📊 Indian Stock Quadrant Analyzer")
+st.title("\ud83d\udcca Indian Stock Quadrant Analyzer")
 
 # Sidebar input
-st.sidebar.subheader("📥 Enter Stock Codes (e.g., TCS, HDFCBANK, INFY)")
+st.sidebar.subheader("\ud83d\udcc5 Enter Stock Codes (e.g., TCS, HDFCBANK, INFY)")
 stock_input = st.sidebar.text_area("Stock Codes (comma separated)", "TCS,HDFCBANK,ZOMATO")
 stock_codes = [code.strip().upper() for code in stock_input.split(',') if code.strip()]
 
@@ -70,18 +70,18 @@ for code in stock_codes:
     if data["Net Margin"] is not None and data["PE Ratio"] is not None:
         data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
     else:
-        data["Quadrant"] = "❌ Not found"
+        data["Quadrant"] = "\u274c Not found"
     stock_data.append(data)
 
 # Create DataFrame
 df = pd.DataFrame(stock_data)
 
 # Show Table
-st.subheader("📋 Stock Classification Table")
+st.subheader("\ud83d\udccb Stock Classification Table")
 st.dataframe(df, use_container_width=True)
 
 # Scatter Plot
-st.subheader("📈 Quadrant Visualization")
+st.subheader("\ud83d\udcc8 Quadrant Visualization")
 
 fig, ax = plt.subplots(figsize=(10, 6))
 colors = {'Q1': 'red', 'Q2': 'orange', 'Q3': 'green', 'Q4': 'blue'}
@@ -93,7 +93,6 @@ for i, row in df.iterrows():
         ax.scatter(row["PE Ratio"], row["Net Margin"], color=colors.get(quad_code, "black"), s=80)
         ax.text(row["PE Ratio"] + 0.5, row["Net Margin"], row["Name"], fontsize=9)
 
-# Draw quadrant lines
 ax.axhline(y=10, color='gray', linestyle='--')
 ax.axvline(x=15, color='gray', linestyle='--')
 ax.set_xlabel("PE Ratio")
