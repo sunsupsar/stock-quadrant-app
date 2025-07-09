@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import requests
-from bs4 import BeautifulSoup
 from io import BytesIO
 import traceback
 
@@ -22,41 +21,35 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# Screener.in data fetch using updated logic
+# Screener CSV export-based data fetch
 # ---------------------------
 def get_screener_data(stock_code):
     try:
-        url = f"https://www.screener.in/company/{stock_code}/"
+        url = f"https://www.screener.in/company/{stock_code}/export/"
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, headers=headers)
-        soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Extract PE Ratio from top ratios section
-        pe_value = None
-        pe_label = soup.find("label", string="Stock P/E")
-        if pe_label:
-            pe_value_str = pe_label.find_next("span").text.strip().replace(",", "")
-            pe_value = float(pe_value_str)
+        if response.status_code != 200:
+            st.warning(f"⚠️ Unable to fetch CSV for {stock_code}")
+            return {"Name": stock_code, "Net Margin": None, "PE Ratio": None}
 
-        # Extract Net Margin from Profitability section
-        net_margin = None
-        tables = soup.find_all("table", class_="ranges-table")
-        for table in tables:
-            if "Net profit margin" in table.text:
-                rows = table.find_all("tr")
-                for row in rows:
-                    if "Net profit margin" in row.text:
-                        cells = row.find_all("td")
-                        if cells and len(cells) >= 2:
-                            margin_str = cells[-1].text.strip().replace("%", "").replace(",", "")
-                            net_margin = float(margin_str)
-                        break
+        lines = response.text.splitlines()
+        data = {}
+
+        for line in lines:
+            if "Stock P/E" in line:
+                pe_ratio = line.split(",")[-1].strip()
+                data["PE Ratio"] = float(pe_ratio) if pe_ratio else None
+            if "Net profit margin" in line and "TTM" in line:
+                net_margin = line.split(",")[-1].strip().replace("%", "")
+                data["Net Margin"] = float(net_margin) if net_margin else None
 
         return {
             "Name": stock_code,
-            "Net Margin": net_margin,
-            "PE Ratio": pe_value
+            "Net Margin": data.get("Net Margin", None),
+            "PE Ratio": data.get("PE Ratio", None)
         }
+
     except Exception as e:
         st.error(f"❌ Error fetching {stock_code}: {e}")
         st.code(traceback.format_exc())
@@ -100,7 +93,7 @@ df.to_excel(excel_file, index=False)
 excel_file.seek(0)
 st.download_button("Download Excel", excel_file, file_name="stock_data.xlsx")
 
-# Analysis Summary
+# Insight Summary
 st.subheader("Insight Summary")
 summaries = []
 for _, row in df.iterrows():
