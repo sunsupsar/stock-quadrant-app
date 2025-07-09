@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import yfinance as yf
+import requests
 from io import BytesIO
 import traceback
 
@@ -21,29 +21,34 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# yfinance-based data fetch
+# Yahoo Finance via RapidAPI
 # ---------------------------
-def get_yfinance_data(symbol):
+API_KEY = "54bca8a40bmsh3a8ba8452230a07p17c34djsn05a34956e4af"
+API_HOST = "yahoo-finance15.p.rapidapi.com"
+
+HEADERS = {
+    "X-RapidAPI-Key": API_KEY,
+    "X-RapidAPI-Host": API_HOST
+}
+
+
+def get_financials(symbol):
     try:
-        stock = yf.Ticker(symbol + ".NS")
-        info = stock.info
+        url = f"https://yahoo-finance15.p.rapidapi.com/api/yahoo/qu/quote/{symbol}.NS"
+        response = requests.get(url, headers=HEADERS)
+        data = response.json()
 
-        pe_ratio = info.get("trailingPE", None)
+        pe = data.get("trailingPE")
+        net_margin = data.get("profitMargins")
 
-        financials = stock.financials
-        if not financials.empty:
-            net_income = financials.loc["Net Income"].iloc[0]
-            revenue = financials.loc["Total Revenue"].iloc[0]
-            net_margin = (net_income / revenue) * 100 if revenue else None
-        else:
-            net_margin = None
+        if isinstance(net_margin, float):
+            net_margin *= 100  # Convert to %
 
         return {
             "Name": symbol,
-            "PE Ratio": pe_ratio,
+            "PE Ratio": pe,
             "Net Margin": net_margin
         }
-
     except Exception as e:
         st.error(f"❌ Error fetching {symbol}: {e}")
         st.code(traceback.format_exc())
@@ -55,16 +60,14 @@ def get_yfinance_data(symbol):
 st.set_page_config(page_title="Stock Quadrant Analyzer", layout="wide")
 st.title("Indian Stock Quadrant Analyzer")
 
-# Sidebar input
 st.sidebar.subheader("Enter Stock Codes (e.g., TCS, HDFCBANK, INFY)")
 stock_input = st.sidebar.text_area("Stock Codes (comma separated)", "TCS,HDFCBANK,INFY")
 stock_codes = [code.strip().upper() for code in stock_input.split(',') if code.strip()]
 
-# Fetch data with debug
 stock_data = []
 for code in stock_codes:
     st.markdown(f"### 📥 Fetching data for: `{code}`")
-    data = get_yfinance_data(code)
+    data = get_financials(code)
     st.json(data)
     data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
     st.markdown(f"🧭 Assigned Quadrant: **{data['Quadrant']}**")
@@ -73,17 +76,16 @@ for code in stock_codes:
 # Create DataFrame
 df = pd.DataFrame(stock_data)
 
-# Show Table
 st.subheader("Stock Classification Table")
 st.dataframe(df, use_container_width=True)
 
-# Download Excel
+# Excel download
 excel_file = BytesIO()
 df.to_excel(excel_file, index=False)
 excel_file.seek(0)
 st.download_button("Download Excel", excel_file, file_name="stock_data.xlsx")
 
-# Insight Summary
+# Summary
 st.subheader("Insight Summary")
 summaries = []
 for _, row in df.iterrows():
@@ -124,7 +126,7 @@ ax.set_ylabel("Net Margin (%)")
 ax.set_title("Stock Quadrant Map")
 st.pyplot(fig)
 
-# Filter control
+# Filters
 st.subheader("Filter Stocks")
 min_margin = st.slider("Minimum Net Margin %", 0, 50, 10)
 max_pe = st.slider("Maximum PE Ratio", 5, 100, 30)
