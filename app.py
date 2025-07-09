@@ -53,10 +53,11 @@ st.sidebar.subheader("Enter Stock Codes (e.g., TCS, HDFCBANK, INFY)")
 stock_input = st.sidebar.text_area("Stock Codes (comma separated)", "TCS,HDFCBANK,INFY")
 stock_codes = [code.strip().upper() for code in stock_input.split(',') if code.strip()]
 
-# Fetch data
+# Fetch data with debug
 stock_data = []
 for code in stock_codes:
     data = get_yahoo_data(code)
+    st.write("🔍 Debug fetch:", data)
     if data["Net Margin"] is not None and data["PE Ratio"] is not None:
         data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
     else:
