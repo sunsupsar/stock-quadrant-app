@@ -1,112 +1,114 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import requests
-from io import StringIO
+from bs4 import BeautifulSoup
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Indian Stock Quadrant Analyzer", layout="wide")
+# -------------------- UTILITY FUNCTIONS --------------------
 
-def get_financials(symbol):
-    st.write(f"📅 Fetching data for: {symbol}")
-    url = f"https://www.screener.in/company/{symbol}/export/"
-    st.write(f"🌐 CSV URL: {url}")
-
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+def fetch_screener_data(symbol):
+    url = f"https://www.screener.in/company/{symbol}/consolidated/"
+    st.write(f"\n\U0001F310 Fetching URL: {url}")
 
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         if response.status_code != 200:
-            st.warning(f"❌ Failed to fetch data for {symbol} (Status {response.status_code})")
-            return {
-                "Name": symbol,
-                "PE Ratio": None,
-                "Net Margin": None,
-                "Quadrant": "Not classified"
-            }
+            st.warning(f"Failed to fetch data for {symbol} (Status {response.status_code})")
+            return None
 
-        df = pd.read_csv(StringIO(response.text))
+        soup = BeautifulSoup(response.text, 'lxml')
 
-        pe_row = df[df.iloc[:, 0].str.contains("P/E", na=False)]
-        net_margin_row = df[df.iloc[:, 0].str.contains("Net profit margin", na=False)]
+        # Find all ratios
+        ratios = soup.find_all("li", class_="flex flex-space-between")
+        pe_ratio = None
+        net_margin = None
 
-        pe_ratio = float(pe_row.iloc[0, 1]) if not pe_row.empty else None
-        net_margin = float(net_margin_row.iloc[0, 1]) if not net_margin_row.empty else None
+        for r in ratios:
+            label = r.find('span')
+            value = r.find_all('span')[-1]
+            if not label or not value:
+                continue
 
-        if pe_ratio is not None:
-            st.write(f"📌 PE Ratio for {symbol}: {pe_ratio}")
-        else:
-            st.warning(f"⚠️ Could not find PE Ratio for {symbol}")
+            label_text = label.text.strip()
+            value_text = value.text.strip().replace('%', '')
 
-        if net_margin is not None:
-            st.write(f"📌 Net Margin for {symbol}: {net_margin}")
-        else:
-            st.warning(f"⚠️ Could not find Net Margin for {symbol}")
+            if label_text == "P/E":
+                pe_ratio = safe_float(value_text)
+            elif label_text == "Net Profit Margin":
+                net_margin = safe_float(value_text)
 
-        # Determine quadrant
-        if pe_ratio is not None and net_margin is not None:
-            if pe_ratio < 20 and net_margin > 15:
-                quadrant = "Q1: Value + Quality"
-            elif pe_ratio >= 20 and net_margin > 15:
-                quadrant = "Q2: Expensive but Profitable"
-            elif pe_ratio < 20 and net_margin <= 15:
-                quadrant = "Q3: Cheap but Low Margin"
-            else:
-                quadrant = "Q4: Overvalued + Low Margin"
-        else:
-            quadrant = "Not classified"
+        if pe_ratio is None:
+            st.warning(f"\u26A0\uFE0F Could not find PE label for {symbol}")
+        if net_margin is None:
+            st.warning(f"\u26A0\uFE0F Could not find Net Margin for {symbol}")
 
         return {
             "Name": symbol,
             "PE Ratio": pe_ratio,
             "Net Margin": net_margin,
-            "Quadrant": quadrant
         }
 
     except Exception as e:
-        st.error(f"❌ Error fetching {symbol}: {e}")
-        return {
-            "Name": symbol,
-            "PE Ratio": None,
-            "Net Margin": None,
-            "Quadrant": "Not classified"
-        }
+        st.error(f"Error for {symbol}: {e}")
+        return None
 
-# --------------------------
-# 🚀 Streamlit UI Starts Here
-# --------------------------
+def safe_float(value):
+    try:
+        return float(value.replace(',', ''))
+    except:
+        return None
 
-st.title("📊 Indian Stock Quadrant Analyzer (Screener.in)")
+def classify_quadrant(pe, margin):
+    if pe is None or margin is None:
+        return "Not classified"
+    if pe < 20 and margin > 20:
+        return "Bargain Quality"
+    elif pe >= 20 and margin > 20:
+        return "Premium Quality"
+    elif pe < 20 and margin <= 20:
+        return "Undervalued Low Margin"
+    else:
+        return "Overpriced Low Margin"
 
-symbols_input = st.text_input("Enter stock symbols (comma-separated):", "TCS, INFY, HDFCBANK")
+# -------------------- STREAMLIT UI --------------------
 
-if st.button("Analyze"):
-    symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
-    results = [get_financials(symbol) for symbol in symbols]
-    df = pd.DataFrame(results)
+def main():
+    st.title("\U0001F4CA Indian Stock Quadrant Analyzer (Screener.in)")
+    user_input = st.text_input("Enter stock symbols (comma-separated):", "TCS,INFY,HDFCBANK")
 
-    st.markdown("### 📋 Stock Classification Table")
-    st.dataframe(df, use_container_width=True)
+    if not user_input:
+        return
 
-    if not df.empty and df["PE Ratio"].notna().sum() > 0:
-        st.markdown("### 📈 Quadrant Scatter Plot")
+    stock_symbols = [s.strip().upper() for s in user_input.split(",") if s.strip()]
+    all_data = []
+
+    for symbol in stock_symbols:
+        st.write(f"\n\U0001F4C5 Fetching data for: {symbol}")
+        data = fetch_screener_data(symbol)
+
+        if data:
+            data['Quadrant'] = classify_quadrant(data['PE Ratio'], data['Net Margin'])
+            st.json(data)
+            all_data.append(data)
+
+    if all_data:
+        df = pd.DataFrame(all_data)
+        st.subheader("\U0001F4CB Stock Classification Table")
+        st.dataframe(df)
+
+        # Optional: quadrant plot
+        st.subheader("\U0001F3A8 Quadrant Plot")
         fig, ax = plt.subplots()
-        colors = {
-            "Q1: Value + Quality": "green",
-            "Q2: Expensive but Profitable": "blue",
-            "Q3: Cheap but Low Margin": "orange",
-            "Q4: Overvalued + Low Margin": "red",
-            "Not classified": "gray"
-        }
-
-        for _, row in df.iterrows():
-            if pd.notna(row["PE Ratio"]) and pd.notna(row["Net Margin"]):
-                ax.scatter(row["PE Ratio"], row["Net Margin"],
-                           label=row["Name"], color=colors.get(row["Quadrant"], "gray"))
-                ax.annotate(row["Name"], (row["PE Ratio"], row["Net Margin"]))
-
-        ax.set_xlabel("P/E Ratio")
-        ax.set_ylabel("Net Profit Margin (%)")
-        ax.grid(True)
+        for i, row in df.iterrows():
+            if pd.notna(row['PE Ratio']) and pd.notna(row['Net Margin']):
+                ax.scatter(row['PE Ratio'], row['Net Margin'], label=row['Name'])
+                ax.annotate(row['Name'], (row['PE Ratio'], row['Net Margin']))
+        ax.axhline(20, color='gray', linestyle='--')
+        ax.axvline(20, color='gray', linestyle='--')
+        ax.set_xlabel("PE Ratio")
+        ax.set_ylabel("Net Margin (%)")
+        ax.set_title("Stock Classification by PE and Margin")
         st.pyplot(fig)
+
+if __name__ == "__main__":
+    main()
