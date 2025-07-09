@@ -1,6 +1,6 @@
 streamlit
 pandas
 matplotlib
-requests
+yfinance
 openpyxl
-alpha_vantage
+
