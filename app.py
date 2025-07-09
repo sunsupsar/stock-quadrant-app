@@ -22,39 +22,41 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# Screener.in data fetch with detailed debug
+# Screener.in data fetch using updated logic
 # ---------------------------
 def get_screener_data(stock_code):
     try:
         url = f"https://www.screener.in/company/{stock_code}/"
-        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
-        soup = BeautifulSoup(response.content, "html.parser")
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Extract PE Ratio
-        pe_text = soup.find(text="Stock P/E")
-        if pe_text:
-            pe_value_raw = pe_text.find_next("span").text
-            pe_value = float(pe_value_raw.replace(',', ''))
-        else:
-            pe_value = None
-            st.warning(f"⚠️ Could not find PE for {stock_code}")
+        # Extract PE Ratio from top ratios section
+        pe_value = None
+        pe_label = soup.find("label", string="Stock P/E")
+        if pe_label:
+            pe_value_str = pe_label.find_next("span").text.strip().replace(",", "")
+            pe_value = float(pe_value_str)
 
-        # Extract Net Profit Margin
-        margin_text = soup.find(text="Net profit margin")
-        if margin_text:
-            margin_row = margin_text.find_parent("tr")
-            margin_cell = margin_row.find_all("td")[-1].text
-            net_margin = float(margin_cell.replace('%', '').replace(',', '').strip())
-        else:
-            net_margin = None
-            st.warning(f"⚠️ Could not find Net Margin for {stock_code}")
+        # Extract Net Margin from Profitability section
+        net_margin = None
+        tables = soup.find_all("table", class_="ranges-table")
+        for table in tables:
+            if "Net profit margin" in table.text:
+                rows = table.find_all("tr")
+                for row in rows:
+                    if "Net profit margin" in row.text:
+                        cells = row.find_all("td")
+                        if cells and len(cells) >= 2:
+                            margin_str = cells[-1].text.strip().replace("%", "").replace(",", "")
+                            net_margin = float(margin_str)
+                        break
 
         return {
             "Name": stock_code,
             "Net Margin": net_margin,
             "PE Ratio": pe_value
         }
-
     except Exception as e:
         st.error(f"❌ Error fetching {stock_code}: {e}")
         st.code(traceback.format_exc())
