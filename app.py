@@ -18,7 +18,7 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# Screener.in HTML scraping logic
+# Screener.in updated HTML scraping logic
 # ---------------------------
 def get_screener_data(stock_code):
     try:
@@ -31,23 +31,30 @@ def get_screener_data(stock_code):
             return {"Name": stock_code, "Net Margin": None, "PE Ratio": None}
 
         soup = BeautifulSoup(response.text, "html.parser")
-        key_ratios = soup.select("ul[class*='flex-wrap'] li")
+        all_ratios = soup.select("section[data-section='key-ratios'] li")
 
         pe_ratio = None
         net_margin = None
 
-        for item in key_ratios:
-            text = item.get_text(strip=True)
-            if "Stock P/E" in text:
-                value = text.split("Stock P/E")[-1].strip().replace(",", "")
+        for li in all_ratios:
+            label = li.find("span")
+            value = li.find("span", {"class": "number"})
+
+            if not label or not value:
+                continue
+
+            label_text = label.get_text(strip=True)
+            value_text = value.get_text(strip=True).replace(",", "").replace("%", "")
+
+            if "Stock P/E" in label_text:
                 try:
-                    pe_ratio = float(value)
+                    pe_ratio = float(value_text)
                 except:
                     pass
-            if "Net Profit Margin" in text:
-                value = text.split("Net Profit Margin")[-1].strip().replace("%", "").replace(",", "")
+
+            if "Net Profit Margin" in label_text:
                 try:
-                    net_margin = float(value)
+                    net_margin = float(value_text)
                 except:
                     pass
 
