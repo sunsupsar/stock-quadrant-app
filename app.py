@@ -1,95 +1,112 @@
 import streamlit as st
 import pandas as pd
 import requests
-import matplotlib.pyplot as plt
+import json
 
-# --- Constants ---
-API_KEY = "54bca8a40bmsh3a8ba8452230a07p17c34djsn05a34956e4af"
-HEADERS = {
-    "X-RapidAPI-Key": API_KEY,
-    "X-RapidAPI-Host": "tijorifinance.p.rapidapi.com"
+# -------------------------------------------
+# CONFIGURATION
+# -------------------------------------------
+TIJORI_API_KEY = "54bca8a40bmsh3a8ba8452230a07p17c34djsn05a34956e4af"
+TIJORI_HOST = "tijorifinance.p.rapidapi.com"
+
+# Optional: You can extend this list
+symbol_map = {
+    "TCS": "TCS.NS",
+    "INFY": "INFY.NS",
+    "HDFCBANK": "HDFCBANK.NS",
+    "RELIANCE": "RELIANCE.NS",
+    "ICICIBANK": "ICICIBANK.NS"
 }
-TIJORI_BASE_URL = "https://tijorifinance.p.rapidapi.com"
 
-# --- Streamlit App ---
-st.title("📊 Indian Stock Quadrant Analyzer (Tijori API)")
-st.markdown("Enter stock symbols like `TCS`, `INFY`, `HDFCBANK`")
+# -------------------------------------------
+# HELPER FUNCTIONS
+# -------------------------------------------
+def get_financials(symbol):
+    original_symbol = symbol.strip().upper()
+    api_symbol = symbol_map.get(original_symbol, original_symbol + ".NS")
 
-symbols_input = st.text_input("Enter stock symbols (comma-separated):", "TCS,INFY,HDFCBANK")
-symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
+    url = f"https://{TIJORI_HOST}/stocks/fundamentals?symbol={api_symbol}"
+    headers = {
+        "X-RapidAPI-Key": TIJORI_API_KEY,
+        "X-RapidAPI-Host": TIJORI_HOST
+    }
 
-# --- Helper Function ---
-def get_tijori_data(symbol):
+    st.write(f"\n📅 Fetching data for: {original_symbol}")
+    st.write(f"🌐 API URL: {url}")
+
     try:
-        st.write(f"\n📅 Fetching data for: {symbol}")
-
-        url = f"{TIJORI_BASE_URL}/stock/summary"
-        params = {"symbol": symbol}
-
-        response = requests.get(url, headers=HEADERS, params=params)
-        st.write(f"📦 Raw API response for {symbol}:", response.text)
+        response = requests.get(url, headers=headers)
+        st.write(f"📦 Raw API response for {original_symbol}: {response.text[:500]}...")
 
         if response.status_code != 200:
-            st.warning(f"Failed API call for {symbol} (Status {response.status_code})")
-            return None
+            st.warning(f"Failed API call for {original_symbol} (Status {response.status_code})")
+            return {
+                "Name": original_symbol,
+                "PE Ratio": None,
+                "Net Margin": None,
+                "Quadrant": "Not classified"
+            }
 
         data = response.json()
-        pe_ratio = data.get("data", {}).get("ratios", {}).get("peRatio")
-        net_margin = data.get("data", {}).get("ratios", {}).get("netMargin")
 
-        if pe_ratio is None or net_margin is None:
-            st.warning(f"⚠️ Could not find PE or Net Margin for {symbol}")
-            return None
+        pe_ratio = data.get("valuation", {}).get("peRatio")
+        net_margin = data.get("profitability", {}).get("netMargin")
+
+        if pe_ratio is None:
+            st.warning(f"⚠️ Could not find PE for {original_symbol}")
+        if net_margin is None:
+            st.warning(f"⚠️ Could not find Net Margin for {original_symbol}")
+
+        quadrant = classify_quadrant(pe_ratio, net_margin)
 
         return {
-            "Name": symbol,
-            "PE Ratio": round(pe_ratio, 2),
-            "Net Margin": round(net_margin, 2)
+            "Name": original_symbol,
+            "PE Ratio": pe_ratio,
+            "Net Margin": net_margin,
+            "Quadrant": quadrant
         }
 
     except Exception as e:
-        st.error(f"❌ Exception for {symbol}: {e}")
-        return None
+        st.error(f"❌ Exception while fetching {original_symbol}: {e}")
+        return {
+            "Name": original_symbol,
+            "PE Ratio": None,
+            "Net Margin": None,
+            "Quadrant": "Not classified"
+        }
 
-# --- Quadrant Assignment ---
-def classify_stock(pe, margin):
+
+def classify_quadrant(pe, margin):
     if pe is None or margin is None:
         return "Not classified"
     if pe < 25 and margin > 15:
-        return "🟩 Value & Quality"
+        return "Q1: Value + High Margin"
     elif pe >= 25 and margin > 15:
-        return "🟨 Expensive but Profitable"
+        return "Q2: Expensive + High Margin"
     elif pe < 25 and margin <= 15:
-        return "🟦 Cheap but Weak"
+        return "Q3: Value + Low Margin"
     else:
-        return "🟥 Overpriced & Weak"
+        return "Q4: Expensive + Low Margin"
 
-# --- Main Execution ---
-results = []
 
-for symbol in symbols:
-    data = get_tijori_data(symbol)
-    if data:
-        data["Quadrant"] = classify_stock(data["PE Ratio"], data["Net Margin"])
-    else:
-        data = {"Name": symbol, "PE Ratio": None, "Net Margin": None, "Quadrant": "Not classified"}
-    results.append(data)
+# -------------------------------------------
+# MAIN APP
+# -------------------------------------------
+st.set_page_config(page_title="Indian Stock Quadrant Analyzer", layout="centered")
+st.title("📊 Indian Stock Quadrant Analyzer (Tijori API)")
 
-# --- Display Table ---
-df = pd.DataFrame(results)
-st.markdown("### 📋 Stock Classification Table")
-st.dataframe(df, use_container_width=True)
+symbols_input = st.text_input("Enter stock symbols like TCS, INFY, HDFCBANK")
 
-# --- Optional: Scatter Plot ---
-if st.checkbox("Show Quadrant Chart") and not df["PE Ratio"].isnull().all():
-    fig, ax = plt.subplots()
-    for i, row in df.iterrows():
-        if pd.notnull(row["PE Ratio"]) and pd.notnull(row["Net Margin"]):
-            ax.scatter(row["PE Ratio"], row["Net Margin"], label=row["Name"])
-            ax.text(row["PE Ratio"] + 0.5, row["Net Margin"] + 0.5, row["Name"], fontsize=9)
-    ax.axhline(15, color='gray', linestyle='--')
-    ax.axvline(25, color='gray', linestyle='--')
-    ax.set_xlabel("PE Ratio")
-    ax.set_ylabel("Net Margin (%)")
-    ax.set_title("Stock Quadrant Classification")
-    st.pyplot(fig)
+if symbols_input:
+    symbols = [s.strip() for s in symbols_input.split(",") if s.strip()]
+    results = []
+    for sym in symbols:
+        result = get_financials(sym)
+        results.append(result)
+
+    df = pd.DataFrame(results)
+    st.subheader("📋 Stock Classification Table")
+    st.dataframe(df)
+
+    csv = df.to_csv(index=False)
+    st.download_button("📥 Download CSV", csv, "stock_analysis.csv", "text/csv")
