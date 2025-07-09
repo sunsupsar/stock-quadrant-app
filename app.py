@@ -46,7 +46,7 @@ def get_yahoo_data(stock_code):
 # Streamlit app
 # ---------------------------
 st.set_page_config(page_title="Stock Quadrant Analyzer", layout="wide")
-st.title("📊 Indian Stock Quadrant Analyzer")
+st.title("Indian Stock Quadrant Analyzer")
 
 # Sidebar input
 st.sidebar.subheader("Enter Stock Codes (e.g., TCS, HDFCBANK, INFY)")
@@ -67,17 +67,17 @@ for code in stock_codes:
 df = pd.DataFrame(stock_data)
 
 # Show Table
-st.subheader("📋 Stock Classification Table")
+st.subheader("Stock Classification Table")
 st.dataframe(df, use_container_width=True)
 
 # Download Excel
 excel_file = BytesIO()
 df.to_excel(excel_file, index=False)
 excel_file.seek(0)
-st.download_button("📥 Download Excel", excel_file, file_name="stock_data.xlsx")
+st.download_button("Download Excel", excel_file, file_name="stock_data.xlsx")
 
 # Analysis Summary
-st.subheader("🤖 GPT-Style Insight Summary")
+st.subheader("Insight Summary")
 summaries = []
 for _, row in df.iterrows():
     q = row['Quadrant']
@@ -98,7 +98,7 @@ else:
     st.write("No data available for summary.")
 
 # Scatter Plot
-st.subheader("🧭 Quadrant Visualization")
+st.subheader("Quadrant Visualization")
 fig, ax = plt.subplots(figsize=(10, 6))
 colors = {'Q1': 'red', 'Q2': 'orange', 'Q3': 'green', 'Q4': 'blue'}
 for _, row in df.iterrows():
@@ -115,7 +115,7 @@ ax.set_title("Stock Quadrant Map")
 st.pyplot(fig)
 
 # Filter control
-st.subheader("🔎 Filter Stocks")
+st.subheader("Filter Stocks")
 min_margin = st.slider("Minimum Net Margin %", 0, 50, 10)
 max_pe = st.slider("Maximum PE Ratio", 5, 100, 30)
 filtered_df = df[(df["Net Margin"] >= min_margin) & (df["PE Ratio"] <= max_pe)]
