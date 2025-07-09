@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import yfinance as yf
+from io import BytesIO
 
 # ---------------------------
 # Quadrant classification logic
@@ -27,7 +28,7 @@ def get_yahoo_data(stock_code):
         pe_ratio = info.get("forwardPE") or info.get("trailingPE")
         net_margin = info.get("profitMargins")
         if net_margin is not None:
-            net_margin = net_margin * 100  # Convert to percentage
+            net_margin = net_margin * 100
 
         return {
             "Name": stock_code,
@@ -56,7 +57,6 @@ stock_codes = [code.strip().upper() for code in stock_input.split(',') if code.s
 stock_data = []
 for code in stock_codes:
     data = get_yahoo_data(code)
-    st.write(f"🔍 Debug: fetched {data}")
     if data["Net Margin"] is not None and data["PE Ratio"] is not None:
         data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
     else:
@@ -70,22 +70,44 @@ df = pd.DataFrame(stock_data)
 st.subheader("📋 Stock Classification Table")
 st.dataframe(df, use_container_width=True)
 
+# Download Excel
+excel_file = BytesIO()
+df.to_excel(excel_file, index=False)
+excel_file.seek(0)
+st.download_button("📥 Download Excel", excel_file, file_name="stock_data.xlsx")
+
+# Analysis Summary
+st.subheader("🤖 GPT-Style Insight Summary")
+summaries = []
+for _, row in df.iterrows():
+    q = row['Quadrant']
+    if "Q" in q:
+        summaries.append(f"{row['Name']} is in {q}, suggesting it is a {'premium valued strong performer' if 'Q4' in q else 'potentially undervalued high performer' if 'Q3' in q else 'lower margin stock with {'higher' if 'Q2' in q else 'lower'} valuation'}.")
+if summaries:
+    st.markdown("\n".join([f"- {s}" for s in summaries]))
+else:
+    st.write("No data available for summary.")
+
 # Scatter Plot
 st.subheader("🧭 Quadrant Visualization")
-
 fig, ax = plt.subplots(figsize=(10, 6))
 colors = {'Q1': 'red', 'Q2': 'orange', 'Q3': 'green', 'Q4': 'blue'}
-
-for i, row in df.iterrows():
+for _, row in df.iterrows():
     quadrant = row["Quadrant"]
     if "Q" in quadrant:
         quad_code = quadrant.split(":")[0]
         ax.scatter(row["PE Ratio"], row["Net Margin"], color=colors.get(quad_code, "black"), s=80)
         ax.text(row["PE Ratio"] + 0.5, row["Net Margin"], row["Name"], fontsize=9)
-
 ax.axhline(y=10, color='gray', linestyle='--')
 ax.axvline(x=15, color='gray', linestyle='--')
 ax.set_xlabel("PE Ratio")
 ax.set_ylabel("Net Margin (%)")
 ax.set_title("Stock Quadrant Map")
 st.pyplot(fig)
+
+# Filter control
+st.subheader("🔎 Filter Stocks")
+min_margin = st.slider("Minimum Net Margin %", 0, 50, 10)
+max_pe = st.slider("Maximum PE Ratio", 5, 100, 30)
+filtered_df = df[(df["Net Margin"] >= min_margin) & (df["PE Ratio"] <= max_pe)]
+st.dataframe(filtered_df, use_container_width=True)
