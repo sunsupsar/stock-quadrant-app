@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import yfinance as yf
+import requests
+from bs4 import BeautifulSoup
 from io import BytesIO
+import traceback
 
 # ---------------------------
 # Quadrant classification logic
@@ -20,23 +22,42 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# Yahoo Finance fast_info-based data fetch
+# Screener.in data fetch with detailed debug
 # ---------------------------
-def get_yahoo_data(stock_code):
+def get_screener_data(stock_code):
     try:
-        ticker = yf.Ticker(f"{stock_code}.NS")
-        fast_info = ticker.fast_info
+        url = f"https://www.screener.in/company/{stock_code}/"
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        soup = BeautifulSoup(response.content, "html.parser")
 
-        pe_ratio = fast_info.get("pe_ratio")
-        # Placeholder for net margin, not available in fast_info
-        net_margin = None
+        # Extract PE Ratio
+        pe_text = soup.find(text="Stock P/E")
+        if pe_text:
+            pe_value_raw = pe_text.find_next("span").text
+            pe_value = float(pe_value_raw.replace(',', ''))
+        else:
+            pe_value = None
+            st.warning(f"⚠️ Could not find PE for {stock_code}")
+
+        # Extract Net Profit Margin
+        margin_text = soup.find(text="Net profit margin")
+        if margin_text:
+            margin_row = margin_text.find_parent("tr")
+            margin_cell = margin_row.find_all("td")[-1].text
+            net_margin = float(margin_cell.replace('%', '').replace(',', '').strip())
+        else:
+            net_margin = None
+            st.warning(f"⚠️ Could not find Net Margin for {stock_code}")
 
         return {
             "Name": stock_code,
             "Net Margin": net_margin,
-            "PE Ratio": pe_ratio
+            "PE Ratio": pe_value
         }
-    except:
+
+    except Exception as e:
+        st.error(f"❌ Error fetching {stock_code}: {e}")
+        st.code(traceback.format_exc())
         return {
             "Name": stock_code,
             "Net Margin": None,
@@ -57,9 +78,11 @@ stock_codes = [code.strip().upper() for code in stock_input.split(',') if code.s
 # Fetch data with debug
 stock_data = []
 for code in stock_codes:
-    data = get_yahoo_data(code)
-    st.write("🔍 Debug fetch:", data)
+    st.markdown(f"### 📥 Fetching data for: `{code}`")
+    data = get_screener_data(code)
+    st.json(data)
     data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
+    st.markdown(f"🧭 Assigned Quadrant: **{data['Quadrant']}**")
     stock_data.append(data)
 
 # Create DataFrame
@@ -94,7 +117,7 @@ for _, row in df.iterrows():
 if summaries:
     st.markdown("\n".join([f"- {s}" for s in summaries]))
 else:
-    st.write("No data available for summary.")
+    st.info("ℹ️ No data available for summary.")
 
 # Scatter Plot
 st.subheader("Quadrant Visualization")
