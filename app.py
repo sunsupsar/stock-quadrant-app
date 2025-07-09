@@ -71,7 +71,7 @@ def get_screener_data(stock_code):
 # Streamlit app
 # ---------------------------
 st.set_page_config(page_title="Stock Quadrant Analyzer", layout="wide")
-st.title("Indian Stock Quadrant Analyzer")
+st.title("📊 Indian Stock Quadrant Analyzer")
 
 # Sidebar input
 st.sidebar.subheader("Enter Stock Codes (e.g., TCS, HDFCBANK, INFY)")
@@ -82,7 +82,7 @@ stock_codes = [code.strip().upper() for code in stock_input.split(',') if code.s
 stock_data = []
 for code in stock_codes:
     data = get_screener_data(code)
-    st.write(f"🔍 Debug: fetched {data}")
+    st.write(f"🔍 Debug: fetched {data}")  # Show raw fetched data
     if data["Net Margin"] is not None and data["PE Ratio"] is not None:
         data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
     else:
@@ -93,11 +93,11 @@ for code in stock_codes:
 df = pd.DataFrame(stock_data)
 
 # Show Table
-st.subheader("Stock Classification Table")
+st.subheader("📋 Stock Classification Table")
 st.dataframe(df, use_container_width=True)
 
 # Scatter Plot
-st.subheader("Quadrant Visualization")
+st.subheader("🧭 Quadrant Visualization")
 
 fig, ax = plt.subplots(figsize=(10, 6))
 colors = {'Q1': 'red', 'Q2': 'orange', 'Q3': 'green', 'Q4': 'blue'}
