@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import requests
-from bs4 import BeautifulSoup
 from io import BytesIO
+from bs4 import BeautifulSoup
 import traceback
 
 # ---------------------------
@@ -22,8 +22,26 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# Parse HTML from Screener.in
+# Screener.in Web Scraper
 # ---------------------------
+def fetch_html(symbol):
+    try:
+        url = f"https://www.screener.in/company/{symbol}/consolidated/"
+        st.markdown(f"🌐 Fetching URL: {url}")
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            return resp.text
+        else:
+            st.warning(f"⚠️ Failed to fetch {symbol}: Status code {resp.status_code}")
+            return None
+    except Exception as e:
+        st.error(f"❌ Error fetching HTML for {symbol}: {e}")
+        st.code(traceback.format_exc())
+        return None
+
 def parse_pe_and_margin(html, symbol):
     soup = BeautifulSoup(html, 'lxml')
 
@@ -31,26 +49,34 @@ def parse_pe_and_margin(html, symbol):
     net_margin = None
 
     try:
-        # Extract PE Ratio
-        pe_label = soup.find("td", string="P/E")
-        if pe_label:
-            pe_value = pe_label.find_next_sibling("td")
-            if pe_value:
-                pe_ratio = float(pe_value.text.replace(',', '').strip())
+        pe_tag = soup.select_one("li:has(span.sub:contains('P/E'))")
+        if pe_tag:
+            pe_text = pe_tag.get_text(strip=True).replace('P/E', '').strip()
+            pe_ratio = float(pe_text)
         else:
+            # Alternative extraction
+            ratio_block = soup.find("section", class_="company-ratios")
+            if ratio_block:
+                for li in ratio_block.find_all("li"):
+                    if "P/E" in li.text:
+                        value = li.text.split()[-1]
+                        pe_ratio = float(value.replace(',', ''))
+                        break
+        if pe_ratio is None:
             st.warning(f"⚠️ Could not find PE label for {symbol}")
     except Exception as e:
         st.warning(f"⚠️ PE parsing error for {symbol}: {e}")
 
     try:
-        # Extract Net Profit Margin
-        rows = soup.find_all("tr")
-        for row in rows:
-            if "Net Profit Margin" in row.text:
-                tds = row.find_all("td")
-                if len(tds) >= 2:
-                    margin_text = tds[1].text.strip().replace('%', '').replace(',', '')
-                    net_margin = float(margin_text)
+        ratios_table = soup.find("section", id="ratio")
+        if ratios_table:
+            rows = ratios_table.find_all("tr")
+            for row in rows:
+                cols = row.find_all("td")
+                if cols and "Net profit margin" in cols[0].text:
+                    net_margin_text = cols[1].text.replace('%', '').replace(',', '').strip()
+                    if net_margin_text:
+                        net_margin = float(net_margin_text)
                     break
         if net_margin is None:
             st.warning(f"⚠️ Could not find Net Margin for {symbol}")
@@ -59,29 +85,19 @@ def parse_pe_and_margin(html, symbol):
 
     return pe_ratio, net_margin
 
-# ---------------------------
-# Fetch financials
-# ---------------------------
 def get_financials(symbol):
-    try:
-        url = f"https://www.screener.in/company/{symbol}/consolidated/"
-        st.markdown(f"🌐 Fetching URL: {url}")
-        response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-        html = response.text
-
-        pe, margin = parse_pe_and_margin(html, symbol)
-
-        return {"Name": symbol, "PE Ratio": pe, "Net Margin": margin}
-    except Exception as e:
-        st.error(f"❌ Error fetching {symbol}: {e}")
-        st.code(traceback.format_exc())
+    html = fetch_html(symbol)
+    if html is None:
         return {"Name": symbol, "PE Ratio": None, "Net Margin": None}
+    
+    pe, margin = parse_pe_and_margin(html, symbol)
+    return {"Name": symbol, "PE Ratio": pe, "Net Margin": margin}
 
 # ---------------------------
-# Streamlit app
+# Streamlit App
 # ---------------------------
 st.set_page_config(page_title="Stock Quadrant Analyzer", layout="wide")
-st.title("📊 Indian Stock Quadrant Analyzer (via Screener.in)")
+st.title("📊 Indian Stock Quadrant Analyzer (Screener.in)")
 
 st.sidebar.subheader("Enter Stock Codes (e.g., TCS, HDFCBANK, INFY)")
 stock_input = st.sidebar.text_area("Stock Codes (comma separated)", "TCS,HDFCBANK,INFY")
@@ -89,7 +105,7 @@ stock_codes = [c.strip().upper() for c in stock_input.split(',') if c.strip()]
 
 stock_data = []
 for code in stock_codes:
-    st.markdown(f"📅 Fetching data for: **{code}**")
+    st.markdown(f"### 📅 Fetching data for: {code}")
     data = get_financials(code)
     st.json(data)
     data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
@@ -98,23 +114,14 @@ for code in stock_codes:
 
 df = pd.DataFrame(stock_data)
 
-# ---------------------------
-# Classification Table
-# ---------------------------
 st.subheader("📋 Stock Classification Table")
 st.dataframe(df, use_container_width=True)
 
-# ---------------------------
-# Excel Export
-# ---------------------------
 excel_file = BytesIO()
 df.to_excel(excel_file, index=False)
 excel_file.seek(0)
-st.download_button("⬇️ Download Excel", excel_file, file_name="stock_data.xlsx")
+st.download_button("📥 Download Excel", excel_file, file_name="stock_data.xlsx")
 
-# ---------------------------
-# Insight Summary
-# ---------------------------
 st.subheader("🧠 Insight Summary")
 summaries = []
 for _, row in df.iterrows():
@@ -133,10 +140,7 @@ if summaries:
 else:
     st.info("ℹ️ No data available for summary.")
 
-# ---------------------------
-# Quadrant Visualization
-# ---------------------------
-st.subheader("🗺️ Quadrant Visualization")
+st.subheader("📈 Quadrant Visualization")
 fig, ax = plt.subplots(figsize=(10, 6))
 colors = {'Q1': 'red', 'Q2': 'orange', 'Q3': 'green', 'Q4': 'blue'}
 for _, row in df.iterrows():
@@ -152,10 +156,7 @@ ax.set_ylabel("Net Margin (%)")
 ax.set_title("Stock Quadrant Map")
 st.pyplot(fig)
 
-# ---------------------------
-# Filtering Options
-# ---------------------------
-st.subheader("🔎 Filter Stocks")
+st.subheader("🔍 Filter Stocks")
 min_margin = st.slider("Minimum Net Margin %", 0, 50, 10)
 max_pe = st.slider("Maximum PE Ratio", 5, 100, 30)
 filtered = df[(df["PE Ratio"] <= max_pe) & (df["Net Margin"].fillna(0) >= min_margin)]
