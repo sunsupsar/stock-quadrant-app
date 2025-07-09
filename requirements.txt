@@ -2,3 +2,6 @@ streamlit
 pandas
 matplotlib
 openpyxl
+beautifulsoup4
+lxml
+requests
