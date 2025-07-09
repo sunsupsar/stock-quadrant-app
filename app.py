@@ -34,21 +34,16 @@ HEADERS = {
 
 def get_financials(symbol):
     try:
-        url = f"https://yahoo-finance15.p.rapidapi.com/api/yahoo/qu/quote/{symbol}.NS"
-        response = requests.get(url, headers=HEADERS)
-        data = response.json()
+        url = "https://yahoo-finance15.p.rapidapi.com/api/yahoo/qu/get-quotes"
+        params = {"symbols": symbol + ".NS"}
+        resp = requests.get(url, headers=HEADERS, params=params).json()
+        q = resp.get("quotes", [{}])[0]
 
-        pe = data.get("trailingPE")
-        net_margin = data.get("profitMargins")
+        pe = q.get("trailingPE")
+        margin = q.get("profitMargins")
+        net_margin = margin * 100 if isinstance(margin, (float, int)) else None
 
-        if isinstance(net_margin, float):
-            net_margin *= 100  # Convert to %
-
-        return {
-            "Name": symbol,
-            "PE Ratio": pe,
-            "Net Margin": net_margin
-        }
+        return {"Name": symbol, "PE Ratio": pe, "Net Margin": net_margin}
     except Exception as e:
         st.error(f"❌ Error fetching {symbol}: {e}")
         st.code(traceback.format_exc())
