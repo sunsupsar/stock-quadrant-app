@@ -82,7 +82,16 @@ summaries = []
 for _, row in df.iterrows():
     q = row['Quadrant']
     if "Q" in q:
-        summaries.append(f"{row['Name']} is in {q}, suggesting it is a {'premium valued strong performer' if 'Q4' in q else 'potentially undervalued high performer' if 'Q3' in q else 'lower margin stock with {'higher' if 'Q2' in q else 'lower'} valuation'}.")
+        if 'Q4' in q:
+            summary = f"{row['Name']} is in {q}, suggesting it is a premium valued strong performer."
+        elif 'Q3' in q:
+            summary = f"{row['Name']} is in {q}, suggesting it is a potentially undervalued high performer."
+        elif 'Q2' in q:
+            summary = f"{row['Name']} is in {q}, suggesting it is a lower margin stock with higher valuation."
+        else:
+            summary = f"{row['Name']} is in {q}, suggesting it is a lower margin stock with lower valuation."
+        summaries.append(summary)
+
 if summaries:
     st.markdown("\n".join([f"- {s}" for s in summaries]))
 else:
