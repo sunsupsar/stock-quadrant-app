@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import requests
-from bs4 import BeautifulSoup
+import yfinance as yf
 
 # ---------------------------
 # Quadrant classification logic
@@ -18,54 +17,29 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# Screener.in updated HTML scraping logic
+# Yahoo Finance data fetch
 # ---------------------------
-def get_screener_data(stock_code):
+def get_yahoo_data(stock_code):
     try:
-        url = f"https://www.screener.in/company/{stock_code}/"
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
-        response = requests.get(url, headers=headers)
-        if response.status_code != 200:
-            return {"Name": stock_code, "Net Margin": None, "PE Ratio": None}
+        ticker = yf.Ticker(f"{stock_code}.NS")
+        info = ticker.info
 
-        soup = BeautifulSoup(response.text, "html.parser")
-        all_ratios = soup.select("section[data-section='key-ratios'] li")
-
-        pe_ratio = None
-        net_margin = None
-
-        for li in all_ratios:
-            label = li.find("span")
-            value = li.find("span", {"class": "number"})
-
-            if not label or not value:
-                continue
-
-            label_text = label.get_text(strip=True)
-            value_text = value.get_text(strip=True).replace(",", "").replace("%", "")
-
-            if "Stock P/E" in label_text:
-                try:
-                    pe_ratio = float(value_text)
-                except:
-                    pass
-
-            if "Net Profit Margin" in label_text:
-                try:
-                    net_margin = float(value_text)
-                except:
-                    pass
+        pe_ratio = info.get("forwardPE") or info.get("trailingPE")
+        net_margin = info.get("profitMargins")
+        if net_margin is not None:
+            net_margin = net_margin * 100  # Convert to percentage
 
         return {
             "Name": stock_code,
             "Net Margin": net_margin,
             "PE Ratio": pe_ratio
         }
-
-    except Exception as e:
-        return {"Name": stock_code, "Net Margin": None, "PE Ratio": None}
+    except:
+        return {
+            "Name": stock_code,
+            "Net Margin": None,
+            "PE Ratio": None
+        }
 
 # ---------------------------
 # Streamlit app
@@ -75,14 +49,14 @@ st.title("📊 Indian Stock Quadrant Analyzer")
 
 # Sidebar input
 st.sidebar.subheader("Enter Stock Codes (e.g., TCS, HDFCBANK, INFY)")
-stock_input = st.sidebar.text_area("Stock Codes (comma separated)", "TCS,HDFCBANK,ZOMATO")
+stock_input = st.sidebar.text_area("Stock Codes (comma separated)", "TCS,HDFCBANK,INFY")
 stock_codes = [code.strip().upper() for code in stock_input.split(',') if code.strip()]
 
-# Fetch data from Screener
+# Fetch data
 stock_data = []
 for code in stock_codes:
-    data = get_screener_data(code)
-    st.write(f"🔍 Debug: fetched {data}")  # Show raw fetched data
+    data = get_yahoo_data(code)
+    st.write(f"🔍 Debug: fetched {data}")
     if data["Net Margin"] is not None and data["PE Ratio"] is not None:
         data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
     else:
