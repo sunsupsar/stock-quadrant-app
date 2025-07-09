@@ -3,5 +3,4 @@ pandas
 matplotlib
 openpyxl
 beautifulsoup4
-requests
 lxml
