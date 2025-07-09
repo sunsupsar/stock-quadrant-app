@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import requests
+from bs4 import BeautifulSoup
 
 # ---------------------------
 # Quadrant classification logic
@@ -17,29 +18,43 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# Screener.in API logic
+# Screener.in HTML scraping logic
 # ---------------------------
 def get_screener_data(stock_code):
     try:
-        url = f"https://www.screener.in/api/company/{stock_code}/"
+        url = f"https://www.screener.in/company/{stock_code}/"
         headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "application/json"
+            "User-Agent": "Mozilla/5.0"
         }
         response = requests.get(url, headers=headers)
         if response.status_code != 200:
             return {"Name": stock_code, "Net Margin": None, "PE Ratio": None}
 
-        data = response.json()
-        ratios = data.get("ratios", {})
+        soup = BeautifulSoup(response.text, "html.parser")
+        key_ratios = soup.select("ul[class*='flex-wrap'] li")
 
-        pe_ratio = ratios.get("Stock P/E")
-        net_margin = ratios.get("Net Profit Margin")
+        pe_ratio = None
+        net_margin = None
+
+        for item in key_ratios:
+            text = item.get_text(strip=True)
+            if "Stock P/E" in text:
+                value = text.split("Stock P/E")[-1].strip().replace(",", "")
+                try:
+                    pe_ratio = float(value)
+                except:
+                    pass
+            if "Net Profit Margin" in text:
+                value = text.split("Net Profit Margin")[-1].strip().replace("%", "").replace(",", "")
+                try:
+                    net_margin = float(value)
+                except:
+                    pass
 
         return {
             "Name": stock_code,
-            "Net Margin": float(net_margin) if net_margin else None,
-            "PE Ratio": float(pe_ratio) if pe_ratio else None
+            "Net Margin": net_margin,
+            "PE Ratio": pe_ratio
         }
 
     except Exception as e:
@@ -61,7 +76,7 @@ stock_data = []
 for code in stock_codes:
     data = get_screener_data(code)
     st.write(f"🔍 Debug: fetched {data}")
-    if data["Net Margin"] and data["PE Ratio"]:
+    if data["Net Margin"] is not None and data["PE Ratio"] is not None:
         data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
     else:
         data["Quadrant"] = "Not found"
