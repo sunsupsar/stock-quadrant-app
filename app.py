@@ -8,6 +8,8 @@ from io import BytesIO
 # Quadrant classification logic
 # ---------------------------
 def get_quadrant(net_margin, pe_ratio):
+    if net_margin is None or pe_ratio is None:
+        return "Not classified"
     if net_margin < 10 and pe_ratio < 15:
         return "Q1: Low margin, Low multiple"
     elif net_margin < 10 and pe_ratio >= 15:
@@ -18,17 +20,16 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# Yahoo Finance data fetch
+# Yahoo Finance fast_info-based data fetch
 # ---------------------------
 def get_yahoo_data(stock_code):
     try:
         ticker = yf.Ticker(f"{stock_code}.NS")
-        info = ticker.info
+        fast_info = ticker.fast_info
 
-        pe_ratio = info.get("forwardPE") or info.get("trailingPE")
-        net_margin = info.get("profitMargins")
-        if net_margin is not None:
-            net_margin = net_margin * 100
+        pe_ratio = fast_info.get("pe_ratio")
+        # Placeholder for net margin, not available in fast_info
+        net_margin = None
 
         return {
             "Name": stock_code,
@@ -58,10 +59,7 @@ stock_data = []
 for code in stock_codes:
     data = get_yahoo_data(code)
     st.write("🔍 Debug fetch:", data)
-    if data["Net Margin"] is not None and data["PE Ratio"] is not None:
-        data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
-    else:
-        data["Quadrant"] = "Not found"
+    data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
     stock_data.append(data)
 
 # Create DataFrame
@@ -106,8 +104,11 @@ for _, row in df.iterrows():
     quadrant = row["Quadrant"]
     if "Q" in quadrant:
         quad_code = quadrant.split(":")[0]
-        ax.scatter(row["PE Ratio"], row["Net Margin"], color=colors.get(quad_code, "black"), s=80)
-        ax.text(row["PE Ratio"] + 0.5, row["Net Margin"], row["Name"], fontsize=9)
+        ax.scatter(row["PE Ratio"], row["Net Margin"] if row["Net Margin"] is not None else 0, 
+                   color=colors.get(quad_code, "black"), s=80)
+        ax.text(row["PE Ratio"] + 0.5, 
+                row["Net Margin"] if row["Net Margin"] is not None else 0, 
+                row["Name"], fontsize=9)
 ax.axhline(y=10, color='gray', linestyle='--')
 ax.axvline(x=15, color='gray', linestyle='--')
 ax.set_xlabel("PE Ratio")
@@ -119,5 +120,7 @@ st.pyplot(fig)
 st.subheader("Filter Stocks")
 min_margin = st.slider("Minimum Net Margin %", 0, 50, 10)
 max_pe = st.slider("Maximum PE Ratio", 5, 100, 30)
-filtered_df = df[(df["Net Margin"] >= min_margin) & (df["PE Ratio"] <= max_pe)]
+filtered_df = df[(df["PE Ratio"] <= max_pe)]
+if "Net Margin" in filtered_df.columns:
+    filtered_df = filtered_df[(filtered_df["Net Margin"].fillna(0) >= min_margin)]
 st.dataframe(filtered_df, use_container_width=True)
