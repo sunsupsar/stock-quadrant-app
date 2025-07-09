@@ -4,6 +4,13 @@ import matplotlib.pyplot as plt
 import requests
 from io import BytesIO
 import traceback
+from alpha_vantage.fundamentaldata import FundamentalData
+
+# ---------------------------
+# Alpha Vantage API setup
+# ---------------------------
+API_KEY = "TTQFZ58G1FCJBKUH"
+fd = FundamentalData(key=API_KEY, output_format='pandas')
 
 # ---------------------------
 # Quadrant classification logic
@@ -21,43 +28,18 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# Screener CSV export-based data fetch
+# Alpha Vantage data fetch function
 # ---------------------------
-def get_screener_data(stock_code):
+def get_financials(symbol):
     try:
-        url = f"https://www.screener.in/company/{stock_code}/export/"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers)
-
-        if response.status_code != 200:
-            st.warning(f"⚠️ Unable to fetch CSV for {stock_code}")
-            return {"Name": stock_code, "Net Margin": None, "PE Ratio": None}
-
-        lines = response.text.splitlines()
-        data = {}
-
-        for line in lines:
-            if "Stock P/E" in line:
-                pe_ratio = line.split(",")[-1].strip()
-                data["PE Ratio"] = float(pe_ratio) if pe_ratio else None
-            if "Net profit margin" in line and "TTM" in line:
-                net_margin = line.split(",")[-1].strip().replace("%", "")
-                data["Net Margin"] = float(net_margin) if net_margin else None
-
-        return {
-            "Name": stock_code,
-            "Net Margin": data.get("Net Margin", None),
-            "PE Ratio": data.get("PE Ratio", None)
-        }
-
+        data, _ = fd.get_company_overview(symbol + ".NS")
+        pe = float(data.loc['PERatio'][0])
+        profit_margin = float(data.loc['ProfitMargin'][0]) * 100
+        return {"Name": symbol, "PE Ratio": pe, "Net Margin": profit_margin}
     except Exception as e:
-        st.error(f"❌ Error fetching {stock_code}: {e}")
+        st.error(f"❌ Error fetching {symbol}: {e}")
         st.code(traceback.format_exc())
-        return {
-            "Name": stock_code,
-            "Net Margin": None,
-            "PE Ratio": None
-        }
+        return {"Name": symbol, "Net Margin": None, "PE Ratio": None}
 
 # ---------------------------
 # Streamlit app
@@ -74,7 +56,7 @@ stock_codes = [code.strip().upper() for code in stock_input.split(',') if code.s
 stock_data = []
 for code in stock_codes:
     st.markdown(f"### 📥 Fetching data for: `{code}`")
-    data = get_screener_data(code)
+    data = get_financials(code)
     st.json(data)
     data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
     st.markdown(f"🧭 Assigned Quadrant: **{data['Quadrant']}**")
