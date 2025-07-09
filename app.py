@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import requests
-from bs4 import BeautifulSoup
 
 # ---------------------------
 # Quadrant classification logic
@@ -18,35 +17,29 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# Screener.in scraping logic
+# Screener.in API logic
 # ---------------------------
 def get_screener_data(stock_code):
     try:
-        url = f"https://www.screener.in/company/{stock_code}/"
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        url = f"https://www.screener.in/api/company/{stock_code}/"
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json"
+        }
         response = requests.get(url, headers=headers)
-
         if response.status_code != 200:
             return {"Name": stock_code, "Net Margin": None, "PE Ratio": None}
 
-        soup = BeautifulSoup(response.text, 'html.parser')
-        ratios = soup.find_all("li", class_="flex flex-space-between")
+        data = response.json()
+        ratios = data.get("ratios", {})
 
-        pe_ratio = None
-        net_margin = None
-
-        for ratio in ratios:
-            text = ratio.get_text()
-            if "Stock P/E" in text:
-                pe_ratio = float(ratio.find("span").text.replace(",", "").strip())
-            if "Net Profit Margin" in text:
-                net_margin_str = ratio.find("span").text.replace('%', '').replace(',', '').strip()
-                net_margin = float(net_margin_str)
+        pe_ratio = ratios.get("Stock P/E")
+        net_margin = ratios.get("Net Profit Margin")
 
         return {
             "Name": stock_code,
-            "Net Margin": net_margin,
-            "PE Ratio": pe_ratio
+            "Net Margin": float(net_margin) if net_margin else None,
+            "PE Ratio": float(pe_ratio) if pe_ratio else None
         }
 
     except Exception as e:
@@ -67,7 +60,7 @@ stock_codes = [code.strip().upper() for code in stock_input.split(',') if code.s
 stock_data = []
 for code in stock_codes:
     data = get_screener_data(code)
-    if data["Net Margin"] is not None and data["PE Ratio"] is not None:
+    if data["Net Margin"] and data["PE Ratio"]:
         data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
     else:
         data["Quadrant"] = "Not found"
