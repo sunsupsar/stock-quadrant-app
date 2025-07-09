@@ -31,13 +31,13 @@ HEADERS = {
     "X-RapidAPI-Host": API_HOST
 }
 
-
 def get_financials(symbol):
     try:
         url = "https://yahoo-finance15.p.rapidapi.com/api/yahoo/qu/get-quotes"
         params = {"symbols": symbol + ".NS"}
-        resp = requests.get(url, headers=HEADERS, params=params).json()
-        q = resp.get("quotes", [{}])[0]
+        resp = requests.get(url, headers=HEADERS, params=params)
+        data = resp.json()
+        q = data.get("quotes", [{}])[0]
 
         pe = q.get("trailingPE")
         margin = q.get("profitMargins")
@@ -47,7 +47,7 @@ def get_financials(symbol):
     except Exception as e:
         st.error(f"❌ Error fetching {symbol}: {e}")
         st.code(traceback.format_exc())
-        return {"Name": symbol, "Net Margin": None, "PE Ratio": None}
+        return {"Name": symbol, "PE Ratio": None, "Net Margin": None}
 
 # ---------------------------
 # Streamlit app
@@ -57,7 +57,7 @@ st.title("Indian Stock Quadrant Analyzer")
 
 st.sidebar.subheader("Enter Stock Codes (e.g., TCS, HDFCBANK, INFY)")
 stock_input = st.sidebar.text_area("Stock Codes (comma separated)", "TCS,HDFCBANK,INFY")
-stock_codes = [code.strip().upper() for code in stock_input.split(',') if code.strip()]
+stock_codes = [c.strip().upper() for c in stock_input.split(',') if c.strip()]
 
 stock_data = []
 for code in stock_codes:
@@ -68,64 +68,52 @@ for code in stock_codes:
     st.markdown(f"🧭 Assigned Quadrant: **{data['Quadrant']}**")
     stock_data.append(data)
 
-# Create DataFrame
 df = pd.DataFrame(stock_data)
 
 st.subheader("Stock Classification Table")
 st.dataframe(df, use_container_width=True)
 
-# Excel download
 excel_file = BytesIO()
 df.to_excel(excel_file, index=False)
 excel_file.seek(0)
 st.download_button("Download Excel", excel_file, file_name="stock_data.xlsx")
 
-# Summary
 st.subheader("Insight Summary")
 summaries = []
 for _, row in df.iterrows():
     q = row['Quadrant']
     if "Q" in q:
         if 'Q4' in q:
-            summary = f"{row['Name']} is in {q}, suggesting it is a premium valued strong performer."
+            summaries.append(f"{row['Name']} is in {q}, suggesting it is a premium valued strong performer.")
         elif 'Q3' in q:
-            summary = f"{row['Name']} is in {q}, suggesting it is a potentially undervalued high performer."
+            summaries.append(f"{row['Name']} is in {q}, suggesting it is a potentially undervalued high performer.")
         elif 'Q2' in q:
-            summary = f"{row['Name']} is in {q}, suggesting it is a lower margin stock with higher valuation."
+            summaries.append(f"{row['Name']} is in {q}, suggesting it is a lower margin stock with higher valuation.")
         else:
-            summary = f"{row['Name']} is in {q}, suggesting it is a lower margin stock with lower valuation."
-        summaries.append(summary)
-
+            summaries.append(f"{row['Name']} is in {q}, suggesting it is a lower margin stock with lower valuation.")
 if summaries:
-    st.markdown("\n".join([f"- {s}" for s in summaries]))
+    st.markdown("\n".join(f"- {s}" for s in summaries))
 else:
     st.info("ℹ️ No data available for summary.")
 
-# Scatter Plot
 st.subheader("Quadrant Visualization")
 fig, ax = plt.subplots(figsize=(10, 6))
 colors = {'Q1': 'red', 'Q2': 'orange', 'Q3': 'green', 'Q4': 'blue'}
 for _, row in df.iterrows():
-    quadrant = row["Quadrant"]
-    if "Q" in quadrant:
-        quad_code = quadrant.split(":")[0]
-        ax.scatter(row["PE Ratio"], row["Net Margin"] if row["Net Margin"] is not None else 0, 
-                   color=colors.get(quad_code, "black"), s=80)
-        ax.text(row["PE Ratio"] + 0.5, 
-                row["Net Margin"] if row["Net Margin"] is not None else 0, 
-                row["Name"], fontsize=9)
-ax.axhline(y=10, color='gray', linestyle='--')
-ax.axvline(x=15, color='gray', linestyle='--')
+    q = row["Quadrant"]
+    if "Q" in q:
+        quad_code = q.split(":")[0]
+        ax.scatter(row["PE Ratio"] or 0, row["Net Margin"] or 0, color=colors.get(quad_code, "black"), s=80)
+        ax.text((row["PE Ratio"] or 0) + 0.5, (row["Net Margin"] or 0), row["Name"], fontsize=9)
+ax.axhline(10, color='gray', linestyle='--')
+ax.axvline(15, color='gray', linestyle='--')
 ax.set_xlabel("PE Ratio")
 ax.set_ylabel("Net Margin (%)")
 ax.set_title("Stock Quadrant Map")
 st.pyplot(fig)
 
-# Filters
 st.subheader("Filter Stocks")
 min_margin = st.slider("Minimum Net Margin %", 0, 50, 10)
 max_pe = st.slider("Maximum PE Ratio", 5, 100, 30)
-filtered_df = df[(df["PE Ratio"] <= max_pe)]
-if "Net Margin" in filtered_df.columns:
-    filtered_df = filtered_df[(filtered_df["Net Margin"].fillna(0) >= min_margin)]
-st.dataframe(filtered_df, use_container_width=True)
+filtered = df[(df["PE Ratio"] <= max_pe) & (df["Net Margin"].fillna(0) >= min_margin)]
+st.dataframe(filtered, use_container_width=True)
