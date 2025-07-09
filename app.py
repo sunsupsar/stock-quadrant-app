@@ -60,6 +60,7 @@ stock_codes = [code.strip().upper() for code in stock_input.split(',') if code.s
 stock_data = []
 for code in stock_codes:
     data = get_screener_data(code)
+    st.write(f"🔍 Debug: fetched {data}")
     if data["Net Margin"] and data["PE Ratio"]:
         data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
     else:
