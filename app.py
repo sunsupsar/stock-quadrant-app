@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import requests
-from io import BytesIO
+import yfinance as yf
 import traceback
-import json
+import time
+from io import BytesIO
 
 # ---------------------------
 # Quadrant classification logic
@@ -22,41 +22,32 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# Yahoo Finance via RapidAPI
+# YFinance fallback method with retries
 # ---------------------------
-API_KEY = "54bca8a40bmsh3a8ba8452230a07p17c34djsn05a34956e4af"
-API_HOST = "yahoo-finance15.p.rapidapi.com"
+def get_financials(symbol, retries=3):
+    for attempt in range(retries):
+        try:
+            stock = yf.Ticker(symbol + ".NS")
+            info = stock.info
+            pe = info.get("trailingPE")
+            fin = stock.financials
 
-HEADERS = {
-    "X-RapidAPI-Key": API_KEY,
-    "X-RapidAPI-Host": API_HOST
-}
+            if not fin.empty and "Net Income" in fin.index and "Total Revenue" in fin.index:
+                ni = fin.loc["Net Income"].iloc[0]
+                rev = fin.loc["Total Revenue"].iloc[0]
+                nm = (ni / rev) * 100 if rev else None
+            else:
+                nm = None
 
-def get_financials(symbol):
-    try:
-        url = "https://yahoo-finance15.p.rapidapi.com/api/yahoo/qu/get-quotes"
-        params = {"symbols": symbol + ".NS"}
-        resp = requests.get(url, headers=HEADERS, params=params)
-        raw_text = resp.text
-        st.code(f"📦 Raw API response for {symbol}:\n{raw_text[:300]}...")
+            return {"Name": symbol, "PE Ratio": pe, "Net Margin": nm}
 
-        data = resp.json()
-        q = data.get("quotes", [{}])[0]
+        except Exception as e:
+            st.warning(f"⚠️ Attempt {attempt+1} failed for {symbol}: {e}")
+            st.code(traceback.format_exc())
+            time.sleep(5)
 
-        pe = q.get("trailingPE")
-        margin = q.get("profitMargins")
-        net_margin = margin * 100 if isinstance(margin, (float, int)) else None
-
-        if pe is None:
-            st.warning(f"⚠️ Could not find PE for {symbol}")
-        if net_margin is None:
-            st.warning(f"⚠️ Could not find Net Margin for {symbol}")
-
-        return {"Name": symbol, "PE Ratio": pe, "Net Margin": net_margin}
-    except Exception as e:
-        st.error(f"❌ Error fetching {symbol}: {e}")
-        st.code(traceback.format_exc())
-        return {"Name": symbol, "PE Ratio": None, "Net Margin": None}
+    st.error(f"❌ All retries failed for {symbol}")
+    return {"Name": symbol, "PE Ratio": None, "Net Margin": None}
 
 # ---------------------------
 # Streamlit app
@@ -70,11 +61,11 @@ stock_codes = [c.strip().upper() for c in stock_input.split(',') if c.strip()]
 
 stock_data = []
 for code in stock_codes:
-    st.markdown(f"### 📥 Fetching data for: `{code}`")
+    st.markdown(f"### \U0001F4C5 Fetching data for: `{code}`")
     data = get_financials(code)
     st.json(data)
     data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
-    st.markdown(f"🧭 Assigned Quadrant: **{data['Quadrant']}**")
+    st.markdown(f"\U0001F9ED Assigned Quadrant: **{data['Quadrant']}**")
     stock_data.append(data)
 
 df = pd.DataFrame(stock_data)
@@ -103,7 +94,7 @@ for _, row in df.iterrows():
 if summaries:
     st.markdown("\n".join(f"- {s}" for s in summaries))
 else:
-    st.info("ℹ️ No data available for summary.")
+    st.info("\u2139\ufe0f No data available for summary.")
 
 st.subheader("Quadrant Visualization")
 fig, ax = plt.subplots(figsize=(10, 6))
