@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import requests
 from io import BytesIO
 import traceback
+import json
 
 # ---------------------------
 # Quadrant classification logic
@@ -36,12 +37,20 @@ def get_financials(symbol):
         url = "https://yahoo-finance15.p.rapidapi.com/api/yahoo/qu/get-quotes"
         params = {"symbols": symbol + ".NS"}
         resp = requests.get(url, headers=HEADERS, params=params)
+        raw_text = resp.text
+        st.code(f"📦 Raw API response for {symbol}:\n{raw_text[:300]}...")
+
         data = resp.json()
         q = data.get("quotes", [{}])[0]
 
         pe = q.get("trailingPE")
         margin = q.get("profitMargins")
         net_margin = margin * 100 if isinstance(margin, (float, int)) else None
+
+        if pe is None:
+            st.warning(f"⚠️ Could not find PE for {symbol}")
+        if net_margin is None:
+            st.warning(f"⚠️ Could not find Net Margin for {symbol}")
 
         return {"Name": symbol, "PE Ratio": pe, "Net Margin": net_margin}
     except Exception as e:
