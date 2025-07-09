@@ -1,112 +1,81 @@
 import streamlit as st
-import pandas as pd
 import requests
-import json
+import pandas as pd
 
-# -------------------------------------------
-# CONFIGURATION
-# -------------------------------------------
-TIJORI_API_KEY = "54bca8a40bmsh3a8ba8452230a07p17c34djsn05a34956e4af"
-TIJORI_HOST = "tijorifinance.p.rapidapi.com"
+# Title
+st.title("📊 Indian Stock Quadrant Analyzer (Tijori API)")
 
-# Optional: You can extend this list
-symbol_map = {
-    "TCS": "TCS.NS",
-    "INFY": "INFY.NS",
-    "HDFCBANK": "HDFCBANK.NS",
-    "RELIANCE": "RELIANCE.NS",
-    "ICICIBANK": "ICICIBANK.NS"
+# Input
+symbols_input = st.text_input("Enter stock symbols like TCS, INFY, HDFCBANK")
+
+# API Setup
+API_URL = "https://tijorifinance.p.rapidapi.com/stocks/fundamentals"
+HEADERS = {
+    "X-RapidAPI-Key": "54bca8a40bmsh3a8ba8452230a07p17c34djsn05a34956e4af",
+    "X-RapidAPI-Host": "tijorifinance.p.rapidapi.com"
 }
 
-# -------------------------------------------
-# HELPER FUNCTIONS
-# -------------------------------------------
-def get_financials(symbol):
-    original_symbol = symbol.strip().upper()
-    api_symbol = symbol_map.get(original_symbol, original_symbol + ".NS")
-
-    url = f"https://{TIJORI_HOST}/stocks/fundamentals?symbol={api_symbol}"
-    headers = {
-        "X-RapidAPI-Key": TIJORI_API_KEY,
-        "X-RapidAPI-Host": TIJORI_HOST
-    }
-
-    st.write(f"\n📅 Fetching data for: {original_symbol}")
+def get_tijori_financials(symbol):
+    url = f"{API_URL}?symbol={symbol}.NS"
+    st.write(f"\n📅 Fetching data for: {symbol}")
     st.write(f"🌐 API URL: {url}")
-
     try:
-        response = requests.get(url, headers=headers)
-        st.write(f"📦 Raw API response for {original_symbol}: {response.text[:500]}...")
-
+        response = requests.get(url, headers=HEADERS)
+        st.write(f"📦 Raw API response for {symbol}: {response.text[:200]}...")
         if response.status_code != 200:
-            st.warning(f"Failed API call for {original_symbol} (Status {response.status_code})")
-            return {
-                "Name": original_symbol,
-                "PE Ratio": None,
-                "Net Margin": None,
-                "Quadrant": "Not classified"
-            }
+            st.error(f"Failed API call for {symbol} (Status {response.status_code})")
+            return None, None
 
         data = response.json()
 
-        pe_ratio = data.get("valuation", {}).get("peRatio")
-        net_margin = data.get("profitability", {}).get("netMargin")
+        pe_ratio = data.get("pe_ratio")
+        net_margin = data.get("net_margin")
 
         if pe_ratio is None:
-            st.warning(f"⚠️ Could not find PE for {original_symbol}")
+            st.warning(f"⚠️ Could not find PE for {symbol}")
         if net_margin is None:
-            st.warning(f"⚠️ Could not find Net Margin for {original_symbol}")
+            st.warning(f"⚠️ Could not find Net Margin for {symbol}")
 
-        quadrant = classify_quadrant(pe_ratio, net_margin)
-
-        return {
-            "Name": original_symbol,
-            "PE Ratio": pe_ratio,
-            "Net Margin": net_margin,
-            "Quadrant": quadrant
-        }
+        return pe_ratio, net_margin
 
     except Exception as e:
-        st.error(f"❌ Exception while fetching {original_symbol}: {e}")
-        return {
-            "Name": original_symbol,
-            "PE Ratio": None,
-            "Net Margin": None,
-            "Quadrant": "Not classified"
-        }
-
+        st.error(f"Error fetching data for {symbol}: {e}")
+        return None, None
 
 def classify_quadrant(pe, margin):
     if pe is None or margin is None:
         return "Not classified"
-    if pe < 25 and margin > 15:
-        return "Q1: Value + High Margin"
-    elif pe >= 25 and margin > 15:
-        return "Q2: Expensive + High Margin"
-    elif pe < 25 and margin <= 15:
-        return "Q3: Value + Low Margin"
+    if pe >= 25 and margin >= 15:
+        return "High PE, High Margin"
+    elif pe >= 25 and margin < 15:
+        return "High PE, Low Margin"
+    elif pe < 25 and margin >= 15:
+        return "Low PE, High Margin"
     else:
-        return "Q4: Expensive + Low Margin"
-
-
-# -------------------------------------------
-# MAIN APP
-# -------------------------------------------
-st.set_page_config(page_title="Indian Stock Quadrant Analyzer", layout="centered")
-st.title("📊 Indian Stock Quadrant Analyzer (Tijori API)")
-
-symbols_input = st.text_input("Enter stock symbols like TCS, INFY, HDFCBANK")
+        return "Low PE, Low Margin"
 
 if symbols_input:
-    symbols = [s.strip() for s in symbols_input.split(",") if s.strip()]
+    symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
     results = []
-    for sym in symbols:
-        result = get_financials(sym)
-        results.append(result)
+
+    for symbol in symbols:
+        pe, margin = get_tijori_financials(symbol)
+        quadrant = classify_quadrant(pe, margin)
+
+        results.append({
+            "Name": symbol,
+            "PE Ratio": pe,
+            "Net Margin": margin,
+            "Quadrant": quadrant
+        })
 
     df = pd.DataFrame(results)
     st.subheader("📋 Stock Classification Table")
     st.dataframe(df)
 
-    csv = df.to_csv(index=False)
-    st.download_button("📥 Download CSV", csv, "stock_analysis.csv", "text/csv")
+    st.download_button(
+        label="📥 Download CSV",
+        data=df.to_csv(index=False).encode("utf-8"),
+        file_name="stock_quadrants.csv",
+        mime="text/csv"
+    )
