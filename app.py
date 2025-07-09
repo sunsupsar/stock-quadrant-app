@@ -1,16 +1,9 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import requests
+import yfinance as yf
 from io import BytesIO
 import traceback
-from alpha_vantage.fundamentaldata import FundamentalData
-
-# ---------------------------
-# Alpha Vantage API setup
-# ---------------------------
-API_KEY = "TTQFZ58G1FCJBKUH"
-fd = FundamentalData(key=API_KEY, output_format='pandas')
 
 # ---------------------------
 # Quadrant classification logic
@@ -28,14 +21,29 @@ def get_quadrant(net_margin, pe_ratio):
         return "Q4: High margin, High multiple"
 
 # ---------------------------
-# Alpha Vantage data fetch function
+# yfinance-based data fetch
 # ---------------------------
-def get_financials(symbol):
+def get_yfinance_data(symbol):
     try:
-        data, _ = fd.get_company_overview(symbol + ".NS")
-        pe = float(data.loc['PERatio'][0])
-        profit_margin = float(data.loc['ProfitMargin'][0]) * 100
-        return {"Name": symbol, "PE Ratio": pe, "Net Margin": profit_margin}
+        stock = yf.Ticker(symbol + ".NS")
+        info = stock.info
+
+        pe_ratio = info.get("trailingPE", None)
+
+        financials = stock.financials
+        if not financials.empty:
+            net_income = financials.loc["Net Income"].iloc[0]
+            revenue = financials.loc["Total Revenue"].iloc[0]
+            net_margin = (net_income / revenue) * 100 if revenue else None
+        else:
+            net_margin = None
+
+        return {
+            "Name": symbol,
+            "PE Ratio": pe_ratio,
+            "Net Margin": net_margin
+        }
+
     except Exception as e:
         st.error(f"❌ Error fetching {symbol}: {e}")
         st.code(traceback.format_exc())
@@ -56,7 +64,7 @@ stock_codes = [code.strip().upper() for code in stock_input.split(',') if code.s
 stock_data = []
 for code in stock_codes:
     st.markdown(f"### 📥 Fetching data for: `{code}`")
-    data = get_financials(code)
+    data = get_yfinance_data(code)
     st.json(data)
     data["Quadrant"] = get_quadrant(data["Net Margin"], data["PE Ratio"])
     st.markdown(f"🧭 Assigned Quadrant: **{data['Quadrant']}**")
